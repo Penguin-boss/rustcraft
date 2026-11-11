@@ -1,0 +1,28 @@
+name: Build Rustcraft Windows x64
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust Stable (x64)
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        target: x86_64-pc-windows-msvc
+
+    - name: Build Release Executable
+      run: cargo build --release
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: rustcraft-windows-x64
+        path: target/release/rustcraft.exe
