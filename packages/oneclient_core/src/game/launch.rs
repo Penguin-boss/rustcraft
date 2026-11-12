@@ -315,9 +315,8 @@ async fn start(
     // Stats every library and the asset tree, the same work `plan_downloads`
     // already keeps off the runtime threads. `block_in_place` because
     // `VersionInfo` is not `Clone` and the sweep only reads it
-    let missing = tokio::task::block_in_place(|| {
-        game_files_missing(&version_info, &java.os_arch, updated)
-    });
+    let missing =
+        tokio::task::block_in_place(|| game_files_missing(&version_info, &java.os_arch, updated));
     match missing {
         Ok(true) => {
             tracing::info!(cluster_id, "missing game files; repairing");
@@ -440,7 +439,7 @@ async fn start(
     let mut mc_args = arguments::minecraft_arguments(
         arg_map.get(&ArgumentType::Game).map(Vec::as_slice),
         version_info.minecraft_arguments.as_deref(),
-        &account.access_token,
+        oneclient_auth::OFFLINE_ACCESS_TOKEN,
         &account.username,
         account.id,
         &version.id,
@@ -492,7 +491,7 @@ async fn start(
         .current_dir(&cwd);
 
     let header = format!(
-        "OneClient {} · {} · {version_name} · Java {}\n\n{}\n\n",
+        "RustCraft {} · {} · {version_name} · Java {}\n\n{}\n\n",
         env!("CARGO_PKG_VERSION"),
         cluster.name,
         java.major,

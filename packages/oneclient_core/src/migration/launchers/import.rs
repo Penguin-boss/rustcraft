@@ -53,7 +53,7 @@ const COPY_EXCLUDE_TOP: &[&str] = &[
     "downloads",
 ];
 
-/// Launcher bookkeeping inside the mods folder, meaningless to OneClient
+/// Launcher bookkeeping inside the mods folder, meaningless to RustCraft
 const MODS_SKIP: &[&str] = &[".index", ".connector"];
 
 /// Held open by a running game on Windows and recreated on every world load
@@ -89,15 +89,15 @@ pub struct ExternalImportReport {
 /// What the import does about Java, decided before any settings are written
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum JavaPlan {
-    /// OneClient's usual choice works with what the instance recorded
+    /// RustCraft's usual choice works with what the instance recorded
     Default,
-    /// The instance ran on a newer Java than OneClient would pick; its JVM
+    /// The instance ran on a newer Java than RustCraft would pick; its JVM
     /// arguments may hold flags the older one refuses to start with
     Pin(u32),
 }
 
 /// Pinning only exists to keep the JVM arguments starting; without any,
-/// OneClient's own pick is the safer one
+/// RustCraft's own pick is the safer one
 fn java_plan(source: Option<u32>, required: Option<u32>, has_jvm_args: bool) -> JavaPlan {
     match (source, required) {
         // An older Java than the version requires cannot have run it, so
@@ -202,7 +202,7 @@ pub async fn import_instance(
     if let Some(loader) = &instance.unsupported_loader {
         return Err(oneclient_content::ContentError::InvalidData {
             reason: format!(
-                "{} uses {loader}, which OneClient can't run. Nothing was imported.",
+                "{} uses {loader}, which RustCraft can't run. Nothing was imported.",
                 instance.name
             ),
         }

@@ -1,4 +1,4 @@
-# Contributing to OneLauncher/OneClient
+# Contributing to RustCraft
 
 Welcome!
 
@@ -21,7 +21,7 @@ To familiarize yourself with the project, please read the [README]. Here are som
 
 #### Creating a New Issue
 
-If you come across an issue or have a feature request for OneLauncher/OneClient, please [search if a related issue has already been reported]. If no relevant issue exists, you can open a new issue using the appropriate [issue form].
+If you come across an issue or have a feature request for RustCraft, please [search if a related issue has already been reported]. If no relevant issue exists, you can open a new issue using the appropriate [issue form].
 
 #### Solving an Issue
 
@@ -39,7 +39,7 @@ To make changes locally, follow these steps:
 
 1. Clone the repository: `git clone https://github.com/Polyfrost/OneLauncher`
 2. Navigate to the project directory: `cd OneLauncher`
-3. Configure your system environment for OneLauncher/OneClient development:
+3. Configure your system environment for RustCraft development:
    1. Install a Rust toolchain that supports edition 2024: `rustup toolchain install stable`
    2. Freya renders with [Skia]; on Linux you may also need system libraries such as a C
       compiler, `pkg-config`, and the usual GUI/graphics dev packages. See the
@@ -49,7 +49,7 @@ To make changes locally, follow these steps:
 
 The app crate is `oneclient_app`:
 
-- `cargo run -p oneclient_app` - Runs the **OneClient** desktop application.
+- `cargo run -p oneclient_app` - Runs the **RustCraft** desktop application.
 - `cargo build --release -p oneclient_app` - Builds an optimized release binary.
 
 After you finish making your changes and committed them to your branch, run
@@ -62,11 +62,11 @@ Installers are built with [cargo-packager] (config in
 
 - `cargo install cargo-packager --locked`
 - `cargo build --release -p oneclient_app`
-- `cargo packager --release -p oneclient_app --formats <nsis|app,dmg|deb,appimage>`
+- `cargo packager --release -p oneclient_app --formats nsis`
 
-Releases are cut by dispatching the `OneClient Release Build` GitHub Actions
-workflow. See the **Packaging / Releasing** section of the [README] for details
-and per-OS prerequisites.
+Releases are cut by dispatching the `RustCraft Release Build` GitHub Actions
+workflow, which builds **Windows x64 only** (NSIS installer + updater manifest).
+See the **Packaging / Releasing** section of the [README] for details.
 
 ### Pull Request
 
@@ -91,7 +91,7 @@ Once you have finished making your changes, create a pull request (PR) to submit
 
 ### Your PR is Merged!
 
-Congratulations! 🎉🎉 Polyfrost thanks you for your contribution! ✨
+Congratulations! 🎉🎉 Thank you for your contribution! ✨
 Once your PR is merged, your changes will be included in the next release.
 
 ### Common Errors

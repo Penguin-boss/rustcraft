@@ -18,9 +18,9 @@ use oneclient_polyplus::{
 
 use crate::chat::{ChatRoster, ChatToast, FriendRequestStatus, FriendRequests, InviteGame};
 use crate::components::IconType;
+use crate::essential::POLYPLUS;
 use crate::hooks::{Actions, ClusterAction, ClusterMutation, PumpSignal};
 use crate::i18n::{t, tf};
-use crate::essential::POLYPLUS;
 use crate::invite_join::{self, InviteJoin};
 use crate::launcher;
 use crate::state::{AppChannel, AppState, AsyncStatus, InviteJoinPrompt, SocialTab};
@@ -665,7 +665,11 @@ async fn load_names(station: Station) {
             .clone()
             .write_channel(AppChannel::Chat)
             .chat
-            .add_names(resolved.into_iter().map(|player| (player.id, player.username))),
+            .add_names(
+                resolved
+                    .into_iter()
+                    .map(|player| (player.id, player.username)),
+            ),
         Err(err) => tracing::warn!("could not resolve player names: {err:#}"),
     }
 }
@@ -1665,10 +1669,10 @@ impl Actions {
         self.chat_job(ChatJob::DeclineInvite(invite_id));
     }
 
-    pub fn sync_chat_owner(&self, account: Option<&MinecraftAccount>) {
-        let owner = account
-            .filter(|account| account.is_microsoft())
-            .map(|account| account.id);
+    pub fn sync_chat_owner(&self, _account: Option<&MinecraftAccount>) {
+        // Poly+ chat authenticates with a Microsoft session, which an offline
+        // launcher never has, so chat is always owned by "nobody".
+        let owner: Option<Uuid> = None;
         let station = self.station();
         if station.peek().chat.owner == owner {
             return;

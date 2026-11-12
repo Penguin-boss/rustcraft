@@ -235,7 +235,7 @@ pub async fn describe_payload(path: &Path) -> LauncherResult<ShareMeta> {
         .into());
     }
     let share = modpacks::read_cluster_share(path).await?.ok_or_else(|| {
-        SharingError::Corrupt("the file is not a OneClient instance export".to_string())
+        SharingError::Corrupt("the file is not a RustCraft instance export".to_string())
     })?;
     let sha512 = polyio::sha512_file(path).await?;
     Ok(ShareMeta {
@@ -501,7 +501,7 @@ pub(crate) fn check_meta(meta: &ShareMeta) -> Result<(), SharingError> {
     }
     if meta.format > SHARE_FORMAT {
         return Err(SharingError::Corrupt(format!(
-            "it was shared from a newer OneClient (format {}). Update OneClient to import it.",
+            "it was shared from a newer RustCraft (format {}). Update RustCraft to import it.",
             meta.format
         )));
     }

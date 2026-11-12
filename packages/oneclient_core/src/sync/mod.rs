@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use async_tempfile::TempDir;
 use chrono::Utc;
-use oneclient_auth::{AccountKind, AuthService};
+use oneclient_auth::AuthService;
 use oneclient_cluster::ClusterUpdate;
 use oneclient_common::domain::ContentType;
 use oneclient_common::patch::Patch;
@@ -126,19 +126,10 @@ pub fn device_name() -> String {
         .unwrap_or_else(|| "Another computer".to_string())
 }
 
-pub async fn current_account(state: &LauncherState) -> Result<SyncAccount, SyncError> {
-    let account = state
-        .auth
-        .default_account()
-        .await
-        .map_err(|err| SyncError::Unavailable(err.to_string()))?
-        .filter(|account| account.kind == AccountKind::Microsoft && !account.signed_out)
-        .ok_or(SyncError::NotSignedIn)?;
-    Ok(SyncAccount {
-        id: account.id,
-        name: account.username,
-        token: None,
-    })
+/// Cloud sync is an online feature. RustCraft has no Microsoft session, so
+/// every caller sees the same "not signed in" outcome without a network call.
+pub async fn current_account(_state: &LauncherState) -> Result<SyncAccount, SyncError> {
+    Err(SyncError::NotSignedIn)
 }
 
 pub async fn fingerprint(payload: &Path) -> LauncherResult<String> {
@@ -932,7 +923,7 @@ pub(crate) async fn apply_existing(
         .as_ref()
         .map(|shared| shared.share.clone())
         .ok_or_else(|| {
-            SharingError::Corrupt("the cloud copy is not a OneClient instance".into())
+            SharingError::Corrupt("the cloud copy is not a RustCraft instance".into())
         })?;
     let cluster = state.clusters.get(cluster_id).await?;
 

@@ -6,7 +6,6 @@ use freya::router::RouterContext;
 use oneclient_net::status::{self, ServiceStatus};
 
 use crate::components::{Icon, IconType};
-use crate::hooks::{try_default_account, use_current_account};
 use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::{colors, rounded, text_size};
@@ -103,7 +102,6 @@ impl Component for StatusBar {
     fn render(&self) -> impl IntoElement {
         let mut status = use_state(status::current);
         let mut dismissed = use_state(HashSet::<Issue>::new);
-        let current_account = use_current_account();
 
         use_hook(move || {
             status::request_recheck();
@@ -117,9 +115,8 @@ impl Component for StatusBar {
 
         let conditions = move || Conditions {
             status: *status.read(),
-            signed_out_as: try_default_account(&current_account)
-                .filter(|a| a.needs_sign_in())
-                .map(|a| a.username),
+            // RustCraft has no Microsoft session, so nobody can be signed out.
+            signed_out_as: None,
         };
 
         // A dismissal lasts only while its issue does so the next sign-out

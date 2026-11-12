@@ -43,7 +43,7 @@ pub fn desktop_entry(name: &str, exe: &Path, folder: &str, icon: &str) -> String
          Type=Application\n\
          Version=1.0\n\
          Name={name}\n\
-         Comment=Launch {name} with OneClient\n\
+         Comment=Launch {name} with RustCraft\n\
          Exec={exec}\n\
          Icon={icon}\n\
          Terminal=false\n\
@@ -58,7 +58,7 @@ pub fn url_handler_entry(exe: &Path, scheme: &str, icon: &str) -> String {
     format!(
         "[Desktop Entry]\n\
          Type=Application\n\
-         Name=OneClient\n\
+         Name=RustCraft\n\
          Exec={exec} %u\n\
          Icon={icon}\n\
          Terminal=false\n\

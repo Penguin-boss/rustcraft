@@ -1,11 +1,16 @@
-use chrono::{Duration, Utc};
 use md5::{Digest, Md5};
 use uuid::Uuid;
 
-use super::data::{AccountKind, MinecraftAccount};
+use super::data::MinecraftAccount;
 use super::error::AuthError;
 use crate::error::AuthResult;
 
+/// Vanilla's offline UUID: MD5 of `OfflinePlayer:<username>` with the version
+/// nibble forced to 3 and the variant bits to RFC 4122.
+///
+/// This is exactly what `java.util.UUID.nameUUIDFromBytes` produces, so
+/// offline-mode servers derive the same UUID for the same name.
+#[must_use]
 pub fn offline_uuid(username: &str) -> Uuid {
     let mut hasher = Md5::new();
     hasher.update(format!("OfflinePlayer:{username}").as_bytes());
@@ -38,16 +43,12 @@ pub fn validate_offline_username(username: &str) -> AuthResult<()> {
     Ok(())
 }
 
-#[tracing::instrument(level = "debug", fields(username = %username))]
-pub fn offline_account(username: String) -> MinecraftAccount {
-    tracing::info!("creating offline account");
-    MinecraftAccount {
-        id: offline_uuid(&username),
-        username,
-        access_token: String::new(),
-        refresh_token: String::new(),
-        expires: Utc::now() + Duration::days(3650),
-        kind: AccountKind::Offline,
-        signed_out: false,
-    }
+/// Builds the profile for a name after validating it.
+#[tracing::instrument(level = "debug", skip_all)]
+pub fn offline_account(username: impl Into<String>) -> AuthResult<MinecraftAccount> {
+    let username = username.into();
+    validate_offline_username(&username)?;
+
+    tracing::info!(%username, "creating offline profile");
+    Ok(MinecraftAccount::new(username))
 }

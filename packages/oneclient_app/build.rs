@@ -6,8 +6,8 @@ fn main() {
 
         let version = env!("CARGO_PKG_VERSION");
         res.set("CompanyName", "Polyfrost Inc.");
-        res.set("ProductName", "OneClient");
-        res.set("FileDescription", "OneClient");
+        res.set("ProductName", "RustCraft");
+        res.set("FileDescription", "RustCraft");
         res.set("LegalCopyright", "© 2026 Polyfrost Inc.");
         res.set("OriginalFilename", "oneclient_app.exe");
         res.set("InternalName", "oneclient_app");

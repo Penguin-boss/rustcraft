@@ -443,7 +443,7 @@ fn read_settings(cfg: &Ini) -> ExternalSettings {
     settings
 }
 
-/// Prism expands `$INST_*` variables before running a hook; OneClient does
+/// Prism expands `$INST_*` variables before running a hook; RustCraft does
 /// not, so a hook relying on them would run with the literal text and break
 fn portable_hook(command: Option<&str>) -> Option<String> {
     let command = command?.trim();

@@ -222,7 +222,7 @@ pub struct JavaMajorsQuery;
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct JavaMajorsKeys {
     /// Each version with the loader it launches on. A loader's version info can
-    /// ask for a different Java than vanilla does: OneClient's 1.8.9 runs on 25,
+    /// ask for a different Java than vanilla does: RustCraft's 1.8.9 runs on 25,
     /// where vanilla 1.8.9 says 8
     pub versions: Vec<(String, GameLoader)>,
 }
@@ -270,22 +270,24 @@ impl QueryCapability for JavaMajorsQuery {
                 resolved
             };
 
-            let lookups = resolved.into_iter().map(|(id, version, loader, loader_version)| {
-                let mc = mc.clone();
-                async move {
-                    let info = oneclient_core::game::download_version_info(
-                        &mc,
-                        None,
-                        &version,
-                        loader,
-                        loader_version.as_ref(),
-                        false,
-                    )
-                    .await
-                    .ok()?;
-                    Some((id, info.java_version?.major_version))
-                }
-            });
+            let lookups = resolved
+                .into_iter()
+                .map(|(id, version, loader, loader_version)| {
+                    let mc = mc.clone();
+                    async move {
+                        let info = oneclient_core::game::download_version_info(
+                            &mc,
+                            None,
+                            &version,
+                            loader,
+                            loader_version.as_ref(),
+                            false,
+                        )
+                        .await
+                        .ok()?;
+                        Some((id, info.java_version?.major_version))
+                    }
+                });
 
             let majors = futures_util::future::join_all(lookups)
                 .await

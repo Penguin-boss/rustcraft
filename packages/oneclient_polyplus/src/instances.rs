@@ -103,7 +103,7 @@ async fn send(
     if plus_blocked() {
         return Err(PlusError::ConsentRequired);
     }
-    if account.is_some_and(|account| !account.is_microsoft()) {
+    if account.is_some() {
         return Err(PlusError::OfflineAccount);
     }
 

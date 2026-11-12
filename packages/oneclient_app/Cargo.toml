@@ -1,6 +1,6 @@
 [package]
 name = "oneclient_app"
-description = "OneClient Freya App"
+description = "RustCraft Freya App"
 version = { workspace = true }
 license = { workspace = true }
 edition = { workspace = true }
@@ -96,7 +96,7 @@ windows = { version = "=0.62.2", features = [
 winresource = "=0.1.31"
 
 [package.metadata.packager]
-product-name = "OneClient"
+product-name = "RustCraft"
 identifier = "org.polyfrost.OneClient"
 category = "Game"
 publisher = "Polyfrost Inc."
@@ -136,9 +136,11 @@ timestamp-url = "https://timestamp.digicert.com"
 
 [package.metadata.packager.nsis]
 preinstall-section = """
-Section "-OneClientTauriMigration"
+Section "-RustCraftTauriMigration"
   ; Stale Tauri root start-menu shortcut (this build only writes the sub-folder one).
+  ; The OneClient-named shortcut is removed too, so upgrades from the old brand stay clean.
   Delete "$SMPROGRAMS\\${PRODUCTNAME}.lnk"
+  Delete "$SMPROGRAMS\\OneClient.lnk"
   ; Old Tauri main binary (renamed OneClient.exe -> oneclient_app.exe). Locked while
   ; the outdated app is running during an auto-update, so fall back to reboot removal.
   Delete /REBOOTOK "$INSTDIR\\OneClient.exe"
@@ -157,7 +159,7 @@ Section "-VCRedist"
   ${EndIf}
 
   ${If} $PassiveMode != 1
-    MessageBox MB_OK|MB_ICONEXCLAMATION "This build of OneClient needs the Microsoft Visual C++ Redistributable (x64) 14.40 or newer. Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then run this installer again."
+    MessageBox MB_OK|MB_ICONEXCLAMATION "This build of RustCraft needs the Microsoft Visual C++ Redistributable (x64) 14.40 or newer. Install it from https://aka.ms/vs/17/release/vc_redist.x64.exe, then run this installer again."
   ${EndIf}
 
   vcredist_done:

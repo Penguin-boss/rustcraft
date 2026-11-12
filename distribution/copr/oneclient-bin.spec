@@ -19,7 +19,7 @@ Requires:       dbus-libs
 Provides:       oneclient = %{version}-%{release}
 
 %description
-OneClient is a next-generation open source Minecraft launcher.
+RustCraft is a next-generation open source Minecraft launcher.
 This package ships the prebuilt binaries from the upstream release.
 
 %prep

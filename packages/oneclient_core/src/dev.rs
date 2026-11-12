@@ -266,11 +266,7 @@ pub async fn ephemeral_state() -> LauncherResult<Arc<LauncherState>> {
         db,
         packages: PackageProviderRegistry::new(),
     };
-    let auth = Arc::new(oneclient_auth::AuthService::with_store(
-        Default::default(),
-        services.requester.clone(),
-        services.events.clone(),
-    ));
+    let auth = Arc::new(oneclient_auth::AuthService::with_store(Default::default()));
 
     let clusters = crate::clusters::ClusterManager::new(services.db.clone());
 

@@ -20,8 +20,8 @@ body:
       options:
         - General
         - Core
-        - OneClient
-        - OneLauncher
+        - RustCraft
+        - RustCraft Launcher
   - type: textarea
     attributes:
       label: Is your suggested enhancement related to a problem? Please describe, or link another Issue.

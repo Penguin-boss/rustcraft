@@ -1,18 +1,49 @@
 use std::collections::HashMap;
 
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use oneclient_common::paths;
-use oneclient_events::EventBus;
 
-use crate::data::{AccountKind, MinecraftAccount};
-use crate::error::{AuthError, AuthResult};
+use crate::data::MinecraftAccount;
+use crate::error::AuthResult;
 use crate::offline::{offline_account, validate_offline_username};
 
-#[derive(Debug, serde::Serialize, serde::Deserialize, Default)]
+/// `auth.json` holds the single local profile RustCraft launches with.
+///
+/// The file is intentionally tiny:
+///
+/// ```json
+/// { "profile": { "id": "b50ad385-829d-3141-a216-7e7d7539ba7f", "username": "Notch" } }
+/// ```
+///
+/// Older OneClient builds wrote a `users` map plus a `default_user`; [`load`]
+/// migrates those files in place so existing offline names survive the update.
+///
+/// [`load`]: CredentialsStore::load
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CredentialsStore {
-    pub users: HashMap<Uuid, MinecraftAccount>,
-    pub default_user: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<MinecraftAccount>,
+}
+
+/// Shape of the pre-offline `auth.json` as well as the current one. Keeping a
+/// single deserializer lets the migration live in one place.
+#[derive(Debug, Deserialize)]
+struct RawStore {
+    #[serde(default)]
+    profile: Option<MinecraftAccount>,
+    #[serde(default)]
+    users: HashMap<String, LegacyAccount>,
+    #[serde(default)]
+    default_user: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LegacyAccount {
+    username: String,
+    #[serde(default)]
+    kind: Option<String>,
 }
 
 impl CredentialsStore {
@@ -23,13 +54,34 @@ impl CredentialsStore {
             return Ok(Self::default());
         }
 
-        match polyio::read_json(&path).await {
-            Ok(store) => Ok(store),
+        let raw: RawStore = match polyio::read_json(&path).await {
+            Ok(raw) => raw,
             Err(err) => {
                 tracing::warn!("failed to read auth file: {err}");
-                Ok(Self::default())
+                return Ok(Self::default());
+            }
+        };
+
+        let legacy = raw.profile.is_none() && !raw.users.is_empty();
+        // Recompute the id from the name so a hand-edited file can never drift
+        // away from the UUID offline servers derive for that name.
+        let profile = raw
+            .profile
+            .as_ref()
+            .map(|profile| offline_account(profile.username.as_str()))
+            .transpose()?
+            .or_else(|| migrate_legacy(&raw));
+
+        let store = Self { profile };
+
+        if legacy && store.profile.is_some() {
+            match store.save().await {
+                Ok(()) => tracing::info!("migrated auth.json to the offline profile format"),
+                Err(err) => tracing::warn!("failed to rewrite migrated auth file: {err}"),
             }
         }
+
+        Ok(store)
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
@@ -40,185 +92,62 @@ impl CredentialsStore {
         Ok(())
     }
 
-    pub fn has_microsoft_account(&self) -> bool {
-        self.users
-            .values()
-            .any(|account| account.kind == AccountKind::Microsoft)
-    }
-
+    #[must_use]
     pub fn list_accounts(&self) -> Vec<MinecraftAccount> {
-        self.users.values().cloned().collect()
+        self.profile.iter().cloned().collect()
     }
 
-    pub fn get_account(&self, id: Uuid) -> Option<&MinecraftAccount> {
-        self.users.get(&id)
+    #[must_use]
+    pub fn get_account(&self, id: Uuid) -> Option<MinecraftAccount> {
+        self.profile
+            .as_ref()
+            .filter(|account| account.id == id)
+            .cloned()
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(username = %account.username))]
-    pub async fn commit_account(
+    /// Replaces the profile with a new offline username and persists it.
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn set_username(
         &mut self,
-        account: MinecraftAccount,
-        events: &EventBus,
+        username: impl Into<String>,
     ) -> AuthResult<MinecraftAccount> {
-        self.users.insert(account.id, account.clone());
-
-        if self.default_user.is_none() {
-            self.default_user = Some(account.id);
-        }
-
-        self.save().await?;
-        tracing::debug!("committed account to credentials store");
-        events
-            .notify("Account added")
-            .body(format!("Signed in as {}", account.username))
-            .send();
-        Ok(account)
-    }
-
-    pub fn add_offline_account(&mut self, username: String) -> AuthResult<MinecraftAccount> {
-        let account = self.insert_offline_account(username)?;
-        Ok(account)
-    }
-
-    #[tracing::instrument(level = "debug", skip(self), fields(username = %username))]
-    pub async fn add_offline_account_and_save(
-        &mut self,
-        username: String,
-    ) -> AuthResult<MinecraftAccount> {
-        let account = self.insert_offline_account(username)?;
-        self.save().await?;
-        Ok(account)
-    }
-
-    fn insert_offline_account(&mut self, username: String) -> AuthResult<MinecraftAccount> {
-        if !self.has_microsoft_account() {
-            return Err(AuthError::OfflineRequiresMicrosoft);
-        }
-
+        let username = username.into();
         validate_offline_username(&username)?;
 
-        if self
-            .users
-            .values()
-            .any(|u| u.username.eq_ignore_ascii_case(&username))
-        {
-            return Err(AuthError::DuplicateUsername { username });
-        }
-
-        let account = offline_account(username);
-        self.users.insert(account.id, account.clone());
+        tracing::debug!(%username, "saving offline profile");
+        let account = MinecraftAccount::new(username);
+        self.profile = Some(account.clone());
+        self.save().await?;
         Ok(account)
     }
 
-    #[tracing::instrument(level = "debug", skip_all, fields(%account.id))]
-    pub async fn commit_refreshed_account(&mut self, account: MinecraftAccount) -> AuthResult<()> {
-        self.users.insert(account.id, account);
-        self.save().await?;
-        tracing::debug!("stored refreshed Microsoft account");
-        Ok(())
-    }
-
-    /// Keeps the entry and its default slot so the UI can offer a sign-in for
-    /// this exact account The refresh token is kept too Microsoft sometimes
-    /// rejects a good one and the next renewal retries it
-    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
-    pub async fn mark_signed_out(&mut self, id: Uuid) -> AuthResult<()> {
-        let Some(account) = self.users.get_mut(&id) else {
-            return Err(AuthError::AccountNotFound(id));
-        };
-
-        account.signed_out = true;
-        account.access_token.clear();
-        self.save().await?;
-        Ok(())
-    }
-
-    /// Debug aid swaps in a token Microsoft will reject and backdates expiry so
-    /// the next launch walks the real `invalid_grant` path
-    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
-    pub async fn corrupt_refresh_token(&mut self, id: Uuid) -> AuthResult<()> {
-        let Some(account) = self.users.get_mut(&id) else {
-            return Err(AuthError::AccountNotFound(id));
-        };
-
-        account.refresh_token = "oneclient-debug-invalid-refresh-token".to_string();
-        account.expires = chrono::DateTime::UNIX_EPOCH;
-        self.save().await?;
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
-    pub async fn remove_account(&mut self, id: Uuid) -> AuthResult<Option<MinecraftAccount>> {
-        let removed = self.users.remove(&id);
-
-        if self.default_user == Some(id) {
-            self.default_user = self.users.keys().copied().next();
-        }
-
-        self.save().await?;
-        Ok(removed)
-    }
-
-    #[tracing::instrument(level = "debug", skip(self), fields(?id))]
-    pub async fn set_default_user(&mut self, id: Option<Uuid>) -> AuthResult<()> {
-        if let Some(id) = id
-            && !self.users.contains_key(&id)
-        {
-            return Err(AuthError::AccountNotFound(id));
-        }
-
-        self.default_user = id;
-        self.save().await?;
-        Ok(())
-    }
-
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn resolve_default_id(&mut self) -> AuthResult<Option<Uuid>> {
-        let id = self
-            .default_user
-            .or_else(|| self.users.keys().copied().next());
-
-        let Some(id) = id else {
-            return Ok(None);
-        };
-
-        if !self.users.contains_key(&id) {
-            return Ok(None);
-        }
-
-        if self.default_user != Some(id) {
-            self.default_user = Some(id);
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn clear(&mut self) -> AuthResult<()> {
+        if self.profile.take().is_some() {
             self.save().await?;
         }
-
-        Ok(Some(id))
-    }
-
-    /// Never touches the network callers that need a usable token go through
-    /// [`crate::AuthService::account_for_launch`]
-    #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn default_account(&mut self) -> AuthResult<Option<MinecraftAccount>> {
-        let Some(id) = self.resolve_default_id().await? else {
-            return Ok(None);
-        };
-        let Some(account) = self.users.get(&id).cloned() else {
-            return Ok(None);
-        };
-
-        if account.is_offline() && !self.has_microsoft_account() {
-            return Err(AuthError::OfflineRequiresMicrosoft);
-        }
-
-        Ok(Some(account))
+        Ok(())
     }
 }
 
-/// A transient failure must keep the existing token discarding it because
-/// Wi-Fi dropped would sign the user out of a working account
-pub(crate) fn is_transient_auth_error(err: &AuthError) -> bool {
-    matches!(
-        err,
-        AuthError::Minecraft(crate::error::MinecraftAuthError::RequestError { source, .. })
-            if source.is_connect() || source.is_timeout()
-    )
+/// Picks a name out of a legacy multi-account file: the default account first,
+/// then an explicitly offline one, then the first name alphabetically so the
+/// choice is stable regardless of map ordering.
+fn migrate_legacy(raw: &RawStore) -> Option<MinecraftAccount> {
+    let chosen = raw
+        .default_user
+        .as_deref()
+        .and_then(|id| raw.users.get(id))
+        .or_else(|| {
+            raw.users
+                .values()
+                .find(|account| account.kind.as_deref() == Some("offline"))
+        })
+        .or_else(|| {
+            raw.users
+                .values()
+                .min_by(|a, b| a.username.cmp(&b.username))
+        })?;
+
+    offline_account(chosen.username.clone()).ok()
 }

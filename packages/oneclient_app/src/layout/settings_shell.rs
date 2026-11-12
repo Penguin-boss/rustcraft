@@ -753,7 +753,7 @@ impl Component for SidebarInfo {
 
         let items: [Cow<'static, str>; 4] = [
             Cow::Borrowed(concat!(
-                "OneClient v",
+                "RustCraft v",
                 env!("CARGO_PKG_VERSION"),
                 cfg_select! {
                     debug_assertions => " (debug)",

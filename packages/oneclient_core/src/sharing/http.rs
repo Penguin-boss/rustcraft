@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use oneclient_auth::{AccountKind, AuthService, MinecraftAccount};
+use oneclient_auth::{AuthService, MinecraftAccount};
 use oneclient_polyplus::PlusError;
 use oneclient_polyplus::instances::{self, INSTANCES_PATH, Reply};
 use reqwest::Method;
@@ -190,34 +190,23 @@ pub(crate) async fn download_record(record: &RemoteRecord, dest: &Path) -> Resul
 
 #[derive(Clone)]
 pub struct HttpShareStore {
-    auth: Arc<AuthService>,
+    _auth: Arc<AuthService>,
 }
 
 impl HttpShareStore {
     #[must_use]
     pub fn new(auth: Arc<AuthService>) -> Self {
-        Self { auth }
+        Self { _auth: auth }
     }
 
     async fn account(&self) -> Result<MinecraftAccount, SharingError> {
-        let account = self
-            .auth
-            .default_account_for_launch()
-            .await
-            .map_err(|err| SharingError::Unavailable(err.to_string()))?
-            .filter(|account| account.kind == AccountKind::Microsoft && !account.signed_out);
-        account.ok_or_else(|| {
-            SharingError::Unavailable("sign in with a Microsoft account to share instances".into())
-        })
+        Err(SharingError::Unavailable(
+            "sharing requires an online account, which RustCraft does not support".into(),
+        ))
     }
 
     async fn reader(&self) -> Option<MinecraftAccount> {
-        self.auth
-            .default_account_for_launch()
-            .await
-            .ok()
-            .flatten()
-            .filter(|account| account.kind == AccountKind::Microsoft && !account.signed_out)
+        None
     }
 
     fn remote(record: RemoteRecord) -> RemoteShare {

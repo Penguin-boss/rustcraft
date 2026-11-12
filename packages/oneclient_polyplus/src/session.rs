@@ -4,7 +4,6 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::{SinkExt, TryStreamExt};
-use rand::Rng;
 use reqwest_websocket::{Message, Upgrade};
 use uuid::Uuid;
 
@@ -13,11 +12,7 @@ use oneclient_events::{ChatEvent, EventBus};
 use oneclient_net::RequestError;
 
 use crate::packets::{ClientboundPacket, ServerboundPacket};
-use crate::{
-    PlusClient, PlusError, REQUEST_TIMEOUT, api, base_url, party, plus_blocked, social_allowed,
-};
-
-const MOJANG_JOIN_URL: &str = "https://sessionserver.mojang.com/session/minecraft/join";
+use crate::{PlusClient, PlusError, api, base_url, party, plus_blocked, social_allowed};
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
@@ -26,11 +21,6 @@ const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(300);
 
 const MAX_PLAYERS_PER_PACKET: usize = 64;
 const MAX_WATCHED_PLAYERS: usize = 512;
-
-#[derive(serde::Deserialize)]
-struct LoginResponse {
-    token: String,
-}
 
 enum Outcome {
     Connected,
@@ -95,7 +85,7 @@ pub(crate) fn build_socket_client() -> Result<reqwest::Client, reqwest::Error> {
         .http1_only()
         .tls_backend_rustls()
         .user_agent(format!(
-            "OneClient {} ({})",
+            "RustCraft {} ({})",
             env!("CARGO_PKG_VERSION"),
             env!("CARGO_PKG_HOMEPAGE")
         ));
@@ -363,17 +353,11 @@ fn dispatch(events: &EventBus, account: Uuid, payload: &str) {
 }
 
 pub(crate) async fn current_account(
-    auth: &oneclient_auth::AuthService,
+    _auth: &oneclient_auth::AuthService,
 ) -> Result<Option<MinecraftAccount>, PlusError> {
-    if !social_allowed() {
-        return Ok(None);
-    }
-
-    let Some(account) = auth.default_account_for_launch().await? else {
-        return Ok(None);
-    };
-
-    Ok(usable(&account, social_allowed()).then_some(account))
+    // Poly+ social, parties and chat authenticate with a Microsoft session,
+    // which an offline launcher never has.
+    Ok(None)
 }
 
 fn next_delay(outcome: &Outcome, delay: Duration) -> Duration {
@@ -383,75 +367,28 @@ fn next_delay(outcome: &Outcome, delay: Duration) -> Duration {
     }
 }
 
-pub(crate) fn usable(account: &MinecraftAccount, allowed: bool) -> bool {
-    allowed
-        && account.is_microsoft()
-        && !account.needs_sign_in()
-        && !account.access_token.is_empty()
+/// Kept so party code can share the same gate. An offline profile can never
+/// open a Poly+ session.
+pub(crate) fn usable(_account: &MinecraftAccount, _allowed: bool) -> bool {
+    false
 }
 
-async fn account_changed(auth: &oneclient_auth::AuthService, id: Uuid) -> bool {
-    match auth.default_account().await {
-        Ok(Some(account)) => account.id != id || account.needs_sign_in(),
-        Ok(None) => true,
-        Err(_) => false,
-    }
+async fn account_changed(_auth: &oneclient_auth::AuthService, _id: Uuid) -> bool {
+    true
 }
 
 pub(crate) async fn login(
-    client: &reqwest::Client,
-    account: &MinecraftAccount,
+    _client: &reqwest::Client,
+    _account: &MinecraftAccount,
 ) -> Result<String, PlusError> {
     if plus_blocked() {
         return Err(PlusError::ConsentRequired);
     }
 
-    let server_id = generate_server_id();
-
-    let join = client
-        .post(MOJANG_JOIN_URL)
-        .timeout(REQUEST_TIMEOUT)
-        .header("Accept", "application/json")
-        .json(&serde_json::json!({
-            "accessToken": account.access_token,
-            "selectedProfile": account.id.simple().to_string(),
-            "serverId": server_id,
-        }))
-        .send()
-        .await?;
-
-    if !join.status().is_success() {
-        return Err(PlusError::JoinRejected {
-            status: join.status().as_u16(),
-        });
-    }
-
-    let mut url = reqwest::Url::parse(&format!("{}/account/login", base_url()))?;
-    url.query_pairs_mut()
-        .append_pair("username", &account.username)
-        .append_pair("server_id", &server_id);
-
-    let login = client
-        .post(url)
-        .timeout(REQUEST_TIMEOUT)
-        .header("Accept", "application/json")
-        .send()
-        .await?;
-
-    if !login.status().is_success() {
-        return Err(PlusError::LoginRejected {
-            username: account.username.clone(),
-            status: login.status().as_u16(),
-        });
-    }
-
-    Ok(login.json::<LoginResponse>().await?.token)
-}
-
-fn generate_server_id() -> String {
-    let mut bytes = [0u8; 20];
-    rand::rng().fill_bytes(&mut bytes);
-    polyio::to_hex(&bytes)
+    // The old flow joined a Mojang session server and asked Poly+ for a token.
+    // Both require a real Microsoft session, which RustCraft deliberately
+    // does not have.
+    Err(PlusError::OfflineAccount)
 }
 
 #[cfg(test)]
@@ -468,34 +405,36 @@ mod tests {
 
     #[test]
     fn failures_back_off_up_to_the_cap_and_any_connection_resets_the_wait() {
-        assert_eq!(next_delay(&Outcome::Failed, RECONNECT_DELAY), RECONNECT_DELAY * 2);
-        assert_eq!(next_delay(&Outcome::Failed, MAX_RECONNECT_DELAY), MAX_RECONNECT_DELAY);
-        assert_eq!(next_delay(&Outcome::Connected, MAX_RECONNECT_DELAY), RECONNECT_DELAY);
-        assert_eq!(next_delay(&Outcome::NoAccount, MAX_RECONNECT_DELAY), RECONNECT_DELAY);
-        assert_eq!(next_delay(&Outcome::Restart, MAX_RECONNECT_DELAY), RECONNECT_DELAY);
+        assert_eq!(
+            next_delay(&Outcome::Failed, RECONNECT_DELAY),
+            RECONNECT_DELAY * 2
+        );
+        assert_eq!(
+            next_delay(&Outcome::Failed, MAX_RECONNECT_DELAY),
+            MAX_RECONNECT_DELAY
+        );
+        assert_eq!(
+            next_delay(&Outcome::Connected, MAX_RECONNECT_DELAY),
+            RECONNECT_DELAY
+        );
+        assert_eq!(
+            next_delay(&Outcome::NoAccount, MAX_RECONNECT_DELAY),
+            RECONNECT_DELAY
+        );
+        assert_eq!(
+            next_delay(&Outcome::Restart, MAX_RECONNECT_DELAY),
+            RECONNECT_DELAY
+        );
     }
 
-    fn account(kind: oneclient_auth::AccountKind, token: &str, signed_out: bool) -> MinecraftAccount {
-        MinecraftAccount {
-            id: Uuid::from_u128(1),
-            username: "player".to_string(),
-            access_token: token.to_string(),
-            refresh_token: String::new(),
-            expires: chrono::Utc::now(),
-            kind,
-            signed_out,
-        }
+    fn account(username: &str) -> MinecraftAccount {
+        MinecraftAccount::new(username)
     }
 
     #[test]
-    fn only_a_signed_in_microsoft_account_with_a_token_is_usable() {
-        use oneclient_auth::AccountKind::{Microsoft, Offline};
-
-        assert!(usable(&account(Microsoft, "token", false), true));
-        assert!(!usable(&account(Microsoft, "token", false), false));
-        assert!(!usable(&account(Microsoft, "token", true), true));
-        assert!(!usable(&account(Microsoft, "", false), true));
-        assert!(!usable(&account(Offline, "token", false), true));
+    fn an_offline_profile_is_never_usable_for_social() {
+        assert!(!usable(&account("player"), true));
+        assert!(!usable(&account("player"), false));
     }
 
     async fn ping_counting_server(close_after_pings: usize) -> (String, Arc<AtomicUsize>) {
@@ -707,15 +646,10 @@ mod tests {
         .expect("the lobby should hear the packet");
 
         assert_eq!(received, party_id);
-        assert!(bus.try_recv().is_err(), "party traffic stays off the chat bus");
-    }
-
-    #[test]
-    fn server_ids_are_random_20_byte_hex() {
-        let id = generate_server_id();
-        assert_eq!(id.len(), 40);
-        assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
-        assert_ne!(id, generate_server_id());
+        assert!(
+            bus.try_recv().is_err(),
+            "party traffic stays off the chat bus"
+        );
     }
 
     #[test]

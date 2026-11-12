@@ -3,7 +3,7 @@ use std::sync::LazyLock;
 use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use reqwest::{Method, StatusCode};
+use reqwest::Method;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
@@ -240,7 +240,10 @@ pub(crate) fn client() -> Result<&'static reqwest::Client, PlusError> {
         .map_err(|err| PlusError::Client(err.clone()))
 }
 
-pub(crate) async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -> Result<String, PlusError> {
+pub(crate) async fn token_for(
+    account: &MinecraftAccount,
+    stale: Option<&str>,
+) -> Result<String, PlusError> {
     let key = (base_url(), account.id);
     let mut tokens = TOKENS.lock().await;
     if let Some((token, issued)) = tokens.get(&key)
@@ -256,7 +259,10 @@ pub(crate) async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -
 }
 
 pub(crate) async fn forget_token(account: Uuid) {
-    TOKENS.lock().await.retain(|(_, owner), _| *owner != account);
+    TOKENS
+        .lock()
+        .await
+        .retain(|(_, owner), _| *owner != account);
 }
 
 pub(crate) async fn send_authorized(
@@ -269,43 +275,18 @@ pub(crate) async fn send_authorized(
 }
 
 pub(crate) async fn send_to(
-    account: &MinecraftAccount,
-    method: Method,
-    url: &str,
-    body: Option<&serde_json::Value>,
+    _account: &MinecraftAccount,
+    _method: Method,
+    _url: &str,
+    _body: Option<&serde_json::Value>,
 ) -> Result<reqwest::Response, PlusError> {
     if plus_blocked() {
         return Err(PlusError::ConsentRequired);
     }
-    if !account.is_microsoft() {
-        return Err(PlusError::OfflineAccount);
-    }
 
-    let mut stale: Option<String> = None;
-    loop {
-        let token = token_for(account, stale.as_deref()).await?;
-        let mut request = client()?
-            .request(method.clone(), url)
-            .timeout(REQUEST_TIMEOUT)
-            .bearer_auth(&token)
-            .header("Accept", "application/json");
-        if let Some(body) = body {
-            request = request.json(body);
-        }
-
-        let response = request.send().await?;
-        if response.status() == StatusCode::UNAUTHORIZED && stale.is_none() {
-            stale = Some(token);
-            continue;
-        }
-        if !response.status().is_success() {
-            return Err(PlusError::Api {
-                status: response.status().as_u16(),
-                body: response.text().await.unwrap_or_default(),
-            });
-        }
-        return Ok(response);
-    }
+    // Every Poly+ request is bearer-authenticated with a Microsoft-derived
+    // token. RustCraft is offline-only, so the feature is unavailable.
+    Err(PlusError::OfflineAccount)
 }
 
 pub(crate) async fn json_authorized<T: DeserializeOwned>(

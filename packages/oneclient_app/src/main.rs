@@ -66,7 +66,6 @@ impl App for OneClientApp {
                         Ok(()) => {
                             startup.sync_bundles();
                             startup.start_cloud_sync();
-                            Actions::check_sessions();
                             microsoft_java::spawn_auto_install();
                         }
                         Err(err) => {

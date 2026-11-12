@@ -332,7 +332,7 @@ async fn read_legacy_profiles(
 }
 
 /// Only an instance that overrides Java says which one it ran on; without
-/// an override the app picks Java by Minecraft version, as OneClient does
+/// an override the app picks Java by Minecraft version, as RustCraft does
 async fn java_major(java_path: Option<&str>) -> Option<u32> {
     let path = java_path.map(str::trim).filter(|p| !p.is_empty())?;
     super::java::major_from_install(Path::new(path)).await

@@ -18,8 +18,8 @@ body:
       multiple: true
       options:
         - Core
-        - OneClient
-        - OneLauncher
+        - RustCraft
+        - RustCraft Launcher
   - type: textarea
     attributes:
       label: Describe the bug

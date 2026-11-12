@@ -19,7 +19,7 @@ pub struct BadModList {
     pub bad_mods: Vec<BadMod>,
 }
 
-/// `improvements.json`: mods worth swapping for a OneClient alternative when
+/// `improvements.json`: mods worth swapping for a RustCraft alternative when
 /// an instance comes over from another launcher. Entries share the bad mods
 /// shape, so they are matched and resolved the same way
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -316,7 +316,10 @@ pub(super) async fn fetch_md_file(
     match fetch_cached(&ctx.net, &url, &cache_path, EtagPolicy::CommitNow).await {
         Ok(Some(fetched)) => Some(fetched.text()).filter(|text| !text.trim().is_empty()),
         Ok(None) => {
-            tracing::warn!(path, "flagged content explanation is unavailable and not cached");
+            tracing::warn!(
+                path,
+                "flagged content explanation is unavailable and not cached"
+            );
             None
         }
         Err(err) => {

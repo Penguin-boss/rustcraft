@@ -380,7 +380,7 @@ pub fn parse_minecraft_argument(
             oneclient_common::constants::MICROSOFT_CLIENT_ID,
         )
         .replace("${user_properties}", "{}")
-        .replace("${user_type}", "msa")
+        .replace("${user_type}", "legacy")
         .replace("${version_name}", version)
         .replace("${assets_index_name}", asset_index)
         .replace(
@@ -426,7 +426,7 @@ fn parse_java_argument(
             &polyio::canonicalize(libraries_path)?.display().to_string(),
         )
         .replace("${classpath_separator}", constants::CLASSPATH_SEPARATOR)
-        .replace("${launcher_name}", "OneClient")
+        .replace("${launcher_name}", "RustCraft")
         .replace("${launcher_version}", env!("CARGO_PKG_VERSION"))
         .replace("${version_name}", version)
         .replace("${classpath}", classpaths))

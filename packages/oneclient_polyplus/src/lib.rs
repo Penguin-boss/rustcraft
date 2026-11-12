@@ -18,9 +18,8 @@ use oneclient_net::RequestError;
 
 pub use models::{
     BlockedPlayer, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary,
-    IncomingSessionInvite, LastMessage,
-    MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, PlayerStatus, RelationshipKind,
-    ResolvedPlayer, SessionInvite,
+    IncomingSessionInvite, LastMessage, MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH,
+    PlayerStatus, RelationshipKind, ResolvedPlayer, SessionInvite,
 };
 pub use packets::ClientboundPacket;
 
@@ -136,21 +135,15 @@ impl PlusClient {
     }
 
     async fn restart_if_switched(&self) {
-        let owner = self
-            .auth
-            .default_account()
-            .await
-            .ok()
-            .flatten()
-            .filter(|account| account.is_microsoft() && !account.needs_sign_in())
-            .map(|account| account.id);
-
+        // Poly+ has no session in offline mode, so there is never a new owner to
+        // switch to. Clearing any stale id is all that is left to do.
         let current = self
             .session_account
             .lock()
             .ok()
             .and_then(|current| *current);
-        if current != owner {
+        if current.is_some() {
+            self.set_session_account(None);
             self.request_restart();
         }
     }

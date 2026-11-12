@@ -1,29 +1,10 @@
-use std::sync::Mutex;
-
 use freya::query::{
     Mutation, MutationCapability, MutationStateData, QueriesStorage, Query, QueryCapability,
     UseMutation, UseQuery, use_mutation, use_query,
 };
-use oneclient_auth::{AccountKind, MicrosoftLoginSession, MinecraftAccount};
+use oneclient_auth::MinecraftAccount;
 use oneclient_core::LauncherError;
 use uuid::Uuid;
-
-const SIGN_OUT_LEAVE_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
-
-static HANDLED_LOGIN_CODE: Mutex<Option<String>> = Mutex::new(None);
-
-pub fn login_code_already_handled(user_code: &str) -> bool {
-    let mut handled = HANDLED_LOGIN_CODE.lock().unwrap();
-    if handled.as_deref() == Some(user_code) {
-        return true;
-    }
-    *handled = Some(user_code.to_string());
-    false
-}
-
-pub fn reset_login_code_dedup() {
-    *HANDLED_LOGIN_CODE.lock().unwrap() = None;
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ListAccountsKeys;
@@ -126,105 +107,25 @@ pub async fn invalidate_auth_queries(account_id: Option<Uuid>) {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct BeginMicrosoftLoginMutation;
-
-impl MutationCapability for BeginMicrosoftLoginMutation {
-    type Ok = MicrosoftLoginSession;
-    type Err = LauncherError;
-    type Keys = ();
-
-    async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?
-            .auth
-            .begin_microsoft_login()
-            .await?)
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct FinishMicrosoftLoginMutation;
-
-impl MutationCapability for FinishMicrosoftLoginMutation {
-    type Ok = MinecraftAccount;
-    type Err = LauncherError;
-    type Keys = MicrosoftLoginSession;
-
-    async fn run(&self, flow: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?
-            .auth
-            .finish_microsoft_login(flow.clone())
-            .await?)
-    }
-
-    async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
-        if let Ok(account) = result {
-            invalidate_auth_queries(Some(account.id)).await;
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct CancelMicrosoftLoginMutation;
-
-/// Keyed by the session's CSRF state token
+/// Saves the name the launcher should play as. This replaces the whole
+/// Microsoft/device-code login flow: there is one local profile and no token.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CancelMicrosoftLoginKeys {
-    pub state_token: String,
-}
-
-impl MutationCapability for CancelMicrosoftLoginMutation {
-    type Ok = ();
-    type Err = LauncherError;
-    type Keys = CancelMicrosoftLoginKeys;
-
-    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        crate::launcher::state()?
-            .auth
-            .cancel_microsoft_login(&keys.state_token)
-            .await;
-        Ok(())
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AddMicrosoftAccountMutation;
-
-impl MutationCapability for AddMicrosoftAccountMutation {
-    type Ok = MinecraftAccount;
-    type Err = LauncherError;
-    type Keys = ();
-
-    async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = crate::launcher::state()?;
-        let flow = state.auth.begin_microsoft_login().await?;
-        Ok(state.auth.finish_microsoft_login(flow).await?)
-    }
-
-    async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
-        if let Ok(account) = result {
-            invalidate_auth_queries(Some(account.id)).await;
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AddOfflineAccountMutation;
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct AddOfflineAccountKeys {
+pub struct SetOfflineProfileKeys {
     pub username: String,
 }
 
-impl MutationCapability for AddOfflineAccountMutation {
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SetOfflineProfileMutation;
+
+impl MutationCapability for SetOfflineProfileMutation {
     type Ok = MinecraftAccount;
     type Err = LauncherError;
-    type Keys = AddOfflineAccountKeys;
+    type Keys = SetOfflineProfileKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         Ok(crate::launcher::state()?
             .auth
-            .add_offline_account(keys.username.clone())
+            .set_offline_username(keys.username.clone())
             .await?)
     }
 
@@ -232,28 +133,6 @@ impl MutationCapability for AddOfflineAccountMutation {
         if let Ok(account) = result {
             invalidate_auth_queries(Some(account.id)).await;
         }
-    }
-}
-
-async fn leave_party_before_sign_out(auth: std::sync::Arc<oneclient_auth::AuthService>, id: Uuid) {
-    let left = crate::launcher::off_ui(async move {
-        tokio::time::timeout(SIGN_OUT_LEAVE_LIMIT, async {
-            let account = auth
-                .account_for_launch(id)
-                .await
-                .map_err(|err| err.to_string())?;
-            oneclient_polyplus::party::leave_for_sign_out(&account)
-                .await
-                .map_err(|err| err.to_string())
-        })
-        .await
-        .map_err(|_| "timed out".to_string())
-        .and_then(|left| left)
-    })
-    .await;
-
-    if let Err(err) = left {
-        tracing::warn!(%id, "could not leave the party before signing out: {err}");
     }
 }
 
@@ -271,9 +150,10 @@ impl MutationCapability for RemoveAccountMutation {
     type Keys = RemoveAccountKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = crate::launcher::state()?;
-        leave_party_before_sign_out(state.auth.clone(), keys.id).await;
-        Ok(state.auth.remove_account(keys.id).await?)
+        Ok(crate::launcher::state()?
+            .auth
+            .remove_account(keys.id)
+            .await?)
     }
 
     async fn on_settled(&self, keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
@@ -310,75 +190,12 @@ impl MutationCapability for SetDefaultAccountMutation {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RefreshAccountMutation;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RefreshAccountKeys {
-    pub id: Uuid,
-}
-
-impl MutationCapability for RefreshAccountMutation {
-    type Ok = MinecraftAccount;
-    type Err = LauncherError;
-    type Keys = RefreshAccountKeys;
-
-    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?
-            .auth
-            .refresh_account(keys.id)
-            .await?)
-    }
-
-    /// A failure can still change the account a rejected token marks it
-    /// signed out
-    async fn on_settled(&self, keys: &Self::Keys, _result: &Result<Self::Ok, Self::Err>) {
-        invalidate_auth_queries(Some(keys.id)).await;
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct RefreshAllAccountsMutation;
-
-impl MutationCapability for RefreshAllAccountsMutation {
-    type Ok = Vec<MinecraftAccount>;
-    type Err = LauncherError;
-    type Keys = ();
-
-    async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?
-            .auth
-            .refresh_all_accounts()
-            .await?)
-    }
-
-    async fn on_settled(&self, _keys: &Self::Keys, _result: &Result<Self::Ok, Self::Err>) {
-        invalidate_auth_queries(None).await;
-    }
-}
-
 pub type UseSetDefaultAccount = UseMutation<SetDefaultAccountMutation>;
 pub type UseRemoveAccount = UseMutation<RemoveAccountMutation>;
-pub type UseRefreshAccount = UseMutation<RefreshAccountMutation>;
+pub type UseSetOfflineProfile = UseMutation<SetOfflineProfileMutation>;
 
-pub fn use_begin_microsoft_login() -> UseMutation<BeginMicrosoftLoginMutation> {
-    use_mutation(Mutation::new(BeginMicrosoftLoginMutation))
-}
-
-pub fn use_finish_microsoft_login() -> UseMutation<FinishMicrosoftLoginMutation> {
-    use_mutation(Mutation::new(FinishMicrosoftLoginMutation))
-}
-
-pub fn use_cancel_microsoft_login() -> UseMutation<CancelMicrosoftLoginMutation> {
-    use_mutation(Mutation::new(CancelMicrosoftLoginMutation))
-}
-
-pub fn use_add_microsoft_account() -> UseMutation<AddMicrosoftAccountMutation> {
-    use_mutation(Mutation::new(AddMicrosoftAccountMutation))
-}
-
-pub fn use_add_offline_account() -> UseMutation<AddOfflineAccountMutation> {
-    use_mutation(Mutation::new(AddOfflineAccountMutation))
+pub fn use_set_offline_profile() -> UseMutation<SetOfflineProfileMutation> {
+    use_mutation(Mutation::new(SetOfflineProfileMutation))
 }
 
 pub fn use_remove_account() -> UseMutation<RemoveAccountMutation> {
@@ -389,16 +206,8 @@ pub fn use_set_default_account() -> UseMutation<SetDefaultAccountMutation> {
     use_mutation(Mutation::new(SetDefaultAccountMutation))
 }
 
-pub fn use_refresh_account() -> UseMutation<RefreshAccountMutation> {
-    use_mutation(Mutation::new(RefreshAccountMutation))
-}
-
-pub fn use_refresh_all_accounts() -> UseMutation<RefreshAllAccountsMutation> {
-    use_mutation(Mutation::new(RefreshAllAccountsMutation))
-}
-
-/// True before it has ever been run as well as while running For button
-/// disabled state use [`mutation_is_running`] instead
+/// True before it has ever been run as well as while running. For button
+/// disabled state use [`mutation_is_running`] instead.
 pub fn mutation_is_pending<M: MutationCapability>(mutation: &UseMutation<M>) -> bool {
     matches!(
         &*mutation.read().state(),
@@ -437,6 +246,19 @@ where
     }
 }
 
-pub fn accounts_have_microsoft(accounts: &[MinecraftAccount]) -> bool {
-    accounts.iter().any(|a| a.kind == AccountKind::Microsoft)
+/// Like [`mutation_error`] but only formats the error, so mutation types whose
+/// error is not `Clone` (such as [`oneclient_core::LauncherError`]) can use it.
+pub fn mutation_error_message<M>(mutation: &UseMutation<M>) -> Option<String>
+where
+    M: MutationCapability,
+    M::Err: std::fmt::Display,
+{
+    let reader = mutation.read();
+    match &*reader.state() {
+        MutationStateData::Settled { res: Err(err), .. } => Some(err.to_string()),
+        MutationStateData::Loading {
+            res: Some(Err(err)),
+        } => Some(err.to_string()),
+        _ => None,
+    }
 }

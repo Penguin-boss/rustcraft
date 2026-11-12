@@ -286,7 +286,7 @@ pub async fn read_cluster_share(path: &Path) -> ContentResult<Option<ClusterShar
     if share.format > SHARE_FORMAT {
         return Err(ContentError::InvalidData {
             reason: format!(
-                "This instance was exported by a newer OneClient (format {}). Update OneClient to import it.",
+                "This instance was exported by a newer RustCraft (format {}). Update RustCraft to import it.",
                 share.format
             ),
         });
@@ -1150,7 +1150,7 @@ pub async fn share_fingerprints(path: &Path) -> ContentResult<ShareFingerprints>
     let share = read_cluster_share(path)
         .await?
         .ok_or_else(|| ContentError::InvalidData {
-            reason: "the file is not a OneClient instance export".to_string(),
+            reason: "the file is not a RustCraft instance export".to_string(),
         })?;
     let settings: HashSet<String> = share
         .settings
@@ -1200,7 +1200,7 @@ pub async fn replace_share_settings(
     let mut share = read_cluster_share(src)
         .await?
         .ok_or_else(|| ContentError::InvalidData {
-            reason: "the earlier share is not a OneClient instance export".to_string(),
+            reason: "the earlier share is not a RustCraft instance export".to_string(),
         })?;
     let old: HashSet<String> = share
         .settings

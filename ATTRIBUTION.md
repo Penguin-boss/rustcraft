@@ -2,6 +2,11 @@
 
 The source code of this repository is licensed under the GNU General Public License, Version 3 only, which is provided in the file [LICENSE](./LICENSE), with a header provided below. Certain files in our library wrappers may be under a different license or [require credit](#additional-libraries), with their specific headers outlined in the below non-exhaustive list.
 
+**RustCraft** is a rebranded fork of the open-source OneLauncher/OneClient project by
+Polyfrost and contributors. Only user-visible branding was changed; the copyright and
+license notices below are retained verbatim from the upstream project, as required by
+the GPL. Upstream source: <https://github.com/Polyfrost/OneLauncher>.
+
 ## OneLauncher
 
 ```txt

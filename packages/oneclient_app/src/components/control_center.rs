@@ -117,9 +117,6 @@ impl Component for AccountHeader {
         };
         let subtitle = match (account.as_ref(), unusable) {
             (_, true) => t("oneclient.components.control_center.microsoft_required"),
-            (Some(account), false) if account.is_microsoft() => {
-                t("oneclient.components.control_center.microsoft_account")
-            }
             (Some(_), false) => t("oneclient.components.control_center.offline_account"),
             (None, false) if loading => t("oneclient.components.control_center.checking_accounts"),
             (None, false) => t("oneclient.components.control_center.no_account"),

@@ -11,8 +11,8 @@ mod external_import;
 pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
-pub(crate) use modpacks::{listed, modpack_job_in_shared_dir};
 pub use modpacks::modpack_job_running;
+pub(crate) use modpacks::{listed, modpack_job_in_shared_dir};
 mod release_migration;
 mod share;
 pub use share::{
@@ -1553,7 +1553,9 @@ impl Actions {
                 }
             };
 
-            actions.settle_install(&state, cluster_id, install, world).await;
+            actions
+                .settle_install(&state, cluster_id, install, world)
+                .await;
 
             finish(&actions);
         });
@@ -1880,24 +1882,6 @@ impl Actions {
 
     /// `syncing_bundles` gates every launch button so the readiness check must
     /// happen before the flag is raised not inside the task
-    /// Lets the signed-out bar show at startup instead of on the first launch
-    pub fn check_sessions() {
-        let state = match launcher::state() {
-            Ok(state) => state,
-            Err(err) => {
-                tracing::error!("session check skipped, launcher not ready: {err:#}");
-                return;
-            }
-        };
-
-        spawn_in_window(async move {
-            let signed_out = off_ui(async move { state.auth.check_expired_sessions().await }).await;
-            if signed_out {
-                super::invalidate_auth_queries(None).await;
-            }
-        });
-    }
-
     pub fn sync_bundles(&self) {
         let state = match launcher::state() {
             Ok(state) => state,
@@ -2626,7 +2610,11 @@ struct ClusterWrite(ClusterId);
 
 impl ClusterWrite {
     fn take(cluster_id: ClusterId) -> Self {
-        *CLUSTER_WRITES.lock().unwrap().entry(cluster_id).or_default() += 1;
+        *CLUSTER_WRITES
+            .lock()
+            .unwrap()
+            .entry(cluster_id)
+            .or_default() += 1;
         Self(cluster_id)
     }
 }
@@ -2658,14 +2646,6 @@ async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<
 
     events.game_stage(cluster_id, oneclient_events::LaunchStage::Checking);
 
-    let was_signed_out = state
-        .auth
-        .default_account()
-        .await
-        .ok()
-        .flatten()
-        .is_some_and(|a| a.needs_sign_in());
-
     let account = match state.auth.default_account_for_launch().await {
         Ok(account) => account,
         Err(err) => {
@@ -2681,12 +2661,6 @@ async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<
         );
         return;
     };
-
-    // The renewal may have just signed the account out or back in the accounts
-    // page and the status bar must pick that up while the game still starts
-    if account.needs_sign_in() != was_signed_out {
-        super::invalidate_auth_queries(None).await;
-    }
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
 

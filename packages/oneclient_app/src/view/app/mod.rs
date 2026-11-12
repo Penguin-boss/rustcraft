@@ -3,6 +3,9 @@ mod clusters;
 mod debug;
 mod home;
 mod stats;
+// The wardrobe needs a Microsoft session. RustCraft is offline-only so the UI
+// is kept compiled but unreachable, which leaves every item in here unused.
+#[allow(dead_code)]
 mod wardrobe;
 
 pub mod browser;
@@ -69,10 +72,10 @@ pub fn launch_syncing(launcher: &LauncherInit, uses_bundles: bool) -> bool {
 }
 
 pub(crate) use analytics::{analytics_body, analytics_placeholder};
-pub use clusters::{Clusters, ExportInstanceModal};
 pub(crate) use clusters::{
     ClusterPickerButton, ClusterPickerModal, CreateInstanceModal, DeleteInstanceModal,
 };
+pub use clusters::{Clusters, ExportInstanceModal};
 pub use debug::Debug;
 pub use home::Home;
 pub use stats::Stats;

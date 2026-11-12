@@ -24,7 +24,6 @@ pub enum AppChannel {
     Game,
     AccountSwitcher,
     ControlCenter,
-    MicrosoftLogin,
     Installs,
     Chat,
     ChatRoster,
@@ -85,7 +84,6 @@ pub struct AppState {
     pub social_popped_notice: bool,
     pub social_tab: SocialTab,
     pub invite_join: Option<InviteJoinPrompt>,
-    pub microsoft_login: Option<LoginProgress>,
     pub installs: InstallState,
     pub chat: ChatState,
     pub storage_scan: Option<StorageScanProgress>,
@@ -353,15 +351,6 @@ pub struct SettingsState {
     pub status: AsyncStatus,
     pub saving: bool,
     pub error: Option<String>,
-}
-
-/// Rendered inside the sign-in modal rather than as a toast the core reports it
-/// as ordinary progress and has no opinion about where it is shown
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LoginProgress {
-    pub label: String,
-    pub current: u64,
-    pub total: u64,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

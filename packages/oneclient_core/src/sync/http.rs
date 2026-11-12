@@ -27,23 +27,17 @@ struct Page {
 
 #[derive(Clone)]
 pub struct HttpSyncStore {
-    auth: Arc<AuthService>,
+    _auth: Arc<AuthService>,
 }
 
 impl HttpSyncStore {
     #[must_use]
     pub fn new(auth: Arc<AuthService>) -> Self {
-        Self { auth }
+        Self { _auth: auth }
     }
 
-    async fn account(&self, account: &SyncAccount) -> Result<MinecraftAccount, SyncError> {
-        if self.auth.get_account(account.id).await.is_none() {
-            return Err(SyncError::NotSignedIn);
-        }
-        self.auth
-            .account_for_launch(account.id)
-            .await
-            .map_err(|err| SyncError::Unavailable(err.to_string()))
+    async fn account(&self, _account: &SyncAccount) -> Result<MinecraftAccount, SyncError> {
+        Err(SyncError::NotSignedIn)
     }
 }
 

@@ -15,7 +15,7 @@ use crate::chat::{ChatMessage, ChatToast};
 use crate::hooks::{Actions, PumpSignal};
 use crate::i18n::t;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
-use crate::state::{AppChannel, AppState, LoginProgress, StorageScanProgress};
+use crate::state::{AppChannel, AppState, StorageScanProgress};
 
 /// Quiet period before log lines are written without it every line wakes the log view
 const GAME_LOG_FLUSH: Duration = Duration::from_millis(120);
@@ -149,7 +149,6 @@ impl EventPump {
         let mut logs: Vec<(i64, String)> = Vec::new();
         let mut failed: Option<(i64, String)> = None;
         let mut crashed: Vec<oneclient_events::GameCrash> = Vec::new();
-        let mut login: Option<Option<LoginProgress>> = None;
         let mut storage_scan: Option<Option<StorageScanProgress>> = None;
         let mut sync_complete = false;
         let mut chat_events: Vec<ChatEvent> = Vec::new();
@@ -173,7 +172,9 @@ impl EventPump {
                 Event::Game(GameEvent::Stage { cluster_id, stage }) => {
                     folded.saw_stage = true;
                     if stage == LaunchStage::Exited {
-                        crate::hooks::cloud_sync_signal(crate::hooks::CloudSignal::Exited(cluster_id));
+                        crate::hooks::cloud_sync_signal(crate::hooks::CloudSignal::Exited(
+                            cluster_id,
+                        ));
                     }
                     if stage.is_busy() {
                         folded.launched.push(cluster_id);
@@ -192,18 +193,6 @@ impl EventPump {
                     failed = Some((cluster_id, message));
                 }
                 Event::Game(GameEvent::Crashed(crash)) => crashed.push(*crash),
-                Event::Progress(ProgressEvent::Update {
-                    id,
-                    ref label,
-                    current,
-                    total,
-                }) if id == oneclient_auth::MICROSOFT_LOGIN_PROGRESS => {
-                    login = Some((current < total).then(|| LoginProgress {
-                        label: label.clone(),
-                        current,
-                        total,
-                    }));
-                }
                 Event::Progress(ProgressEvent::Update {
                     id,
                     ref label,
@@ -345,12 +334,6 @@ impl EventPump {
                 .write_channel(AppChannel::Launcher)
                 .launcher
                 .fetching = false;
-        }
-
-        if let Some(progress) = login {
-            self.station
-                .write_channel(AppChannel::MicrosoftLogin)
-                .microsoft_login = progress;
         }
 
         if let Some(progress) = storage_scan {

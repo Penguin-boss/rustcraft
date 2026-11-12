@@ -3,7 +3,6 @@ use freya::router::RouterContext;
 use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 use oneclient_db::models::OptionalModStatus;
 
-use oneclient_auth::preview_samples;
 use oneclient_core::game::{
     CrashDiagnosis, ModProblem, ModProblemKind, ModRef, crash_mod_issues, crashdata, suspected_mods,
 };
@@ -11,13 +10,8 @@ use oneclient_core::simulate::Damage;
 use oneclient_net::status::{self, ServiceStatus};
 
 use crate::Actions;
-use crate::components::{
-    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, login_dialog, toggle,
-};
-use crate::hooks::{
-    invalidate_auth_queries, settled_or_loading, try_default_account, use_active_cluster_id,
-    use_clusters, use_current_account, use_dispatch,
-};
+use crate::components::{Button, Dropdown, Icon, IconType, ScrollArea, TextInput, toggle};
+use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch};
 use crate::i18n::{t, tf};
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
@@ -105,16 +99,6 @@ impl Component for Debug {
                     .child(section(
                         "Connectivity Status Bar",
                         vec![StatusBarSimulator.into_element()],
-                    ))
-                    .child(divider())
-                    .child(section(
-                        "Auth Error Guidance",
-                        vec![AuthGuidancePreview.into_element()],
-                    ))
-                    .child(divider())
-                    .child(section(
-                        "Session Expiry",
-                        vec![SessionExpirySimulator.into_element()],
                     ))
                     .child(divider())
                     .child(section(
@@ -1145,192 +1129,6 @@ impl Component for StatusBarSimulator {
             )
             .into_element()
     }
-}
-
-#[derive(PartialEq)]
-struct AuthGuidancePreview;
-
-impl Component for AuthGuidancePreview {
-    fn render(&self) -> impl IntoElement {
-        let samples = preview_samples();
-        // Index 0 is the no-error state the rest line up with `samples`
-        let mut choice = use_state(|| 0usize);
-        let mut open = use_state(|| false);
-
-        let mut options: Vec<String> = vec!["No error (in progress)".to_string()];
-        options.extend(samples.iter().map(|s| s.label.to_string()));
-
-        let index = (*choice.read()).min(options.len() - 1);
-        let selected_label = options[index].clone();
-
-        let popup = open().then(|| {
-            let (error, guidance) = match index.checked_sub(1) {
-                None => (None, None),
-                Some(i) => {
-                    let s = &samples[i];
-                    (Some(s.message.clone()), s.guidance.clone())
-                }
-            };
-            login_dialog(
-                "https://login.live.com/oauth20_authorize (preview)".to_string(),
-                "ABCD-EFGH".to_string(),
-                "https://www.microsoft.com/link".to_string(),
-                false,
-                None,
-                error,
-                guidance,
-                move || open.set(false),
-            )
-        });
-
-        rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(10.)
-            .child(
-                label()
-                    .text("Opens the real Microsoft sign-in popup exactly as users see it, in the chosen error state.")
-                    .font_size(text_size(13.))
-                    .color(colors::fg_secondary()),
-            )
-            .child(
-                rect()
-                    .horizontal()
-                    .width(Size::fill())
-                    .cross_align(Alignment::Center)
-                    .spacing(12.)
-                    .child(
-                        Dropdown::new(selected_label, options)
-                            .width(Size::px(300.))
-                            .height(Size::px(34.))
-                            .on_select(move |idx: usize| choice.set(idx)),
-                    )
-                    .child(
-                        Button::new()
-                            .primary()
-                            .child(Icon::new(IconType::Eye).size(16.))
-                            .text("Open preview")
-                            .on_press(move |_| open.set(true)),
-                    ),
-            )
-            .maybe_child(popup)
-            .into_element()
-    }
-}
-
-#[derive(PartialEq)]
-struct SessionExpirySimulator;
-
-#[derive(Clone, Copy)]
-enum ExpiryKind {
-    /// Skips the network and flips the account straight to signed out
-    SignedOut,
-    /// Leaves detection to Microsoft on the next launch
-    RejectedToken,
-}
-
-impl Component for SessionExpirySimulator {
-    fn render(&self) -> impl IntoElement {
-        let dispatch = use_dispatch();
-        let current = use_current_account();
-
-        let account = try_default_account(&current).filter(|a| a.is_microsoft());
-        let target = account.as_ref().map(|a| (a.id, a.username.clone()));
-        let usable = account.as_ref().is_some_and(|a| !a.needs_sign_in());
-
-        let description = match &account {
-            Some(a) if a.needs_sign_in() => format!("{} is already signed out.", a.username),
-            Some(a) => format!("Acts on the active account, {}.", a.username),
-            None => "The active account must be a Microsoft account.".to_string(),
-        };
-
-        let button = |text: &'static str, icon: IconType, kind: ExpiryKind| {
-            let dispatch = dispatch.clone();
-            let target = target.clone();
-            Button::new()
-                .danger()
-                .enabled(usable)
-                .child(Icon::new(icon).size(16.))
-                .text(text)
-                .on_press(move |_| {
-                    if let Some((id, username)) = target.clone() {
-                        run_expiry(&dispatch, kind, id, username);
-                    }
-                })
-        };
-
-        rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(10.)
-            .child(
-                label()
-                    .text(description)
-                    .font_size(text_size(13.))
-                    .color(colors::fg_secondary()),
-            )
-            .child(
-                rect()
-                    .horizontal()
-                    .width(Size::fill())
-                    .spacing(8.)
-                    .child(button(
-                        "Force signed out",
-                        IconType::AlertTriangle,
-                        ExpiryKind::SignedOut,
-                    ))
-                    .child(button(
-                        "Invalidate refresh token",
-                        IconType::RefreshCw01,
-                        ExpiryKind::RejectedToken,
-                    )),
-            )
-            .child(
-                label()
-                    .text("Invalidate keeps the account looking fine until the next launch, where Microsoft answers invalid_grant.")
-                    .font_size(text_size(11.))
-                    .color(colors::fg_secondary()),
-            )
-            .into_element()
-    }
-}
-
-fn run_expiry(dispatch: &crate::Actions, kind: ExpiryKind, id: uuid::Uuid, username: String) {
-    let dispatch = dispatch.clone();
-    spawn(async move {
-        let result = match crate::launcher::state() {
-            Ok(state) => match kind {
-                ExpiryKind::SignedOut => state.auth.mark_signed_out(id).await,
-                ExpiryKind::RejectedToken => state.auth.corrupt_refresh_token(id).await,
-            }
-            .map_err(|err| err.to_string()),
-            Err(err) => Err(err.to_string()),
-        };
-        invalidate_auth_queries(Some(id)).await;
-
-        match result {
-            Ok(()) => {
-                let body = match kind {
-                    ExpiryKind::SignedOut => format!("{username} is now signed out"),
-                    ExpiryKind::RejectedToken => {
-                        format!("{username} will be rejected on the next launch")
-                    }
-                };
-                dispatch
-                    .notify("Session expiry simulated")
-                    .body(body)
-                    .icon(IconType::AlertTriangle)
-                    .send();
-            }
-            Err(err) => {
-                dispatch
-                    .notify("Simulation failed")
-                    .body(err)
-                    .error()
-                    .send();
-            }
-        }
-    });
 }
 
 /// Presets are grouped by which layer should catch them same-length corruption only the hashing pass finds truncation the launch-time size check

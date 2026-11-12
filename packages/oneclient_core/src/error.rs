@@ -82,33 +82,13 @@ pub enum LauncherError {
 }
 
 impl LauncherError {
-    #[must_use]
-    pub fn auth_guidance(&self) -> Option<oneclient_auth::AuthErrorGuidance> {
-        match self {
-            LauncherError::AuthError(oneclient_auth::AuthError::Minecraft(err)) => {
-                oneclient_auth::diagnose_auth_error(err)
-            }
-            _ => None,
-        }
-    }
-
-    /// Not something to report the dialog is already gone by the time it lands
-    #[must_use]
-    pub fn is_login_cancelled(&self) -> bool {
-        matches!(
-            self,
-            LauncherError::AuthError(oneclient_auth::AuthError::LoginCancelled)
-        )
-    }
-
     /// A dialog the user backed out of rather than anything that went wrong
     #[must_use]
     pub fn is_cancelled(&self) -> bool {
-        self.is_login_cancelled()
-            || matches!(
-                self,
-                LauncherError::JavaError(oneclient_java::JavaError::Cancelled)
-            )
+        matches!(
+            self,
+            LauncherError::JavaError(oneclient_java::JavaError::Cancelled)
+        )
     }
 
     /// Whether the install is missing pieces and so is worth repairing
@@ -235,7 +215,6 @@ mod tests {
     #[test]
     fn dismissing_a_dialog_is_a_cancellation_not_a_failure() {
         assert!(LauncherError::JavaError(oneclient_java::JavaError::Cancelled).is_cancelled());
-        assert!(LauncherError::AuthError(oneclient_auth::AuthError::LoginCancelled).is_cancelled());
     }
 
     /// The whole point of the split anything that is not a dismissal keeps

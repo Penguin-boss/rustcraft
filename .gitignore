@@ -1,6 +1,6 @@
 /target
 .DS_Store
 /.idea
-OneLauncher.iml
+RustCraft.iml
 
 /packages/oneclient_app/icons/generated/

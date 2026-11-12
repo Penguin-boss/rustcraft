@@ -17,8 +17,8 @@ use oneclient_polyplus::party::{
 use tokio::sync::broadcast::error::RecvError;
 use uuid::Uuid;
 
-use crate::components::IconType;
 use crate::chat::short_player_id;
+use crate::components::IconType;
 use crate::hooks::{
     Actions, player_name, settled_or_loading, try_default_account, use_chat_allowed,
     use_current_account, use_dispatch, use_player_profile, wardrobe::plus_message,
@@ -76,10 +76,7 @@ impl LobbyState {
     }
 
     fn lost_party(&self, member_as: Option<Uuid>) -> bool {
-        member_as.is_some()
-            && self.me == member_as
-            && self.party.is_none()
-            && self.error.is_none()
+        member_as.is_some() && self.me == member_as && self.party.is_none() && self.error.is_none()
     }
 
     fn absorb(&mut self, seen: u64, result: Result<Snapshot, (Option<Uuid>, String)>) -> bool {
@@ -139,9 +136,7 @@ impl LobbyState {
                 let party = self.party.take_if(|party| party.id == party_id)?;
                 match reason {
                     LeftReason::Kicked => Some(Notice::Kicked),
-                    LeftReason::Disbanded if !is_leader(&party, self.me) => {
-                        Some(Notice::Disbanded)
-                    }
+                    LeftReason::Disbanded if !is_leader(&party, self.me) => Some(Notice::Disbanded),
                     LeftReason::Expired => Some(Notice::PartyLost),
                     LeftReason::Disbanded | LeftReason::Left | LeftReason::Other => None,
                 }
@@ -314,7 +309,10 @@ fn announce(notice: Notice, dispatch: &Actions) {
             spawn(async move {
                 let name = player_name(sender).await;
                 dispatch
-                    .notify(tf("oneclient.components.lobby.toast.invite_received", &[&name]))
+                    .notify(tf(
+                        "oneclient.components.lobby.toast.invite_received",
+                        &[&name],
+                    ))
                     .body(t("oneclient.components.lobby.toast.invite_received_body"))
                     .info()
                     .icon(IconType::Users01)
@@ -337,29 +335,10 @@ pub fn party_message(err: PlusError) -> String {
     party::error_message(&err).unwrap_or_else(|| plus_message(err))
 }
 
-fn renewing_owner(stored: Option<MinecraftAccount>, allowed: bool) -> Option<Uuid> {
-    stored
-        .filter(|account| allowed && account.is_microsoft())
-        .map(|account| account.id)
-}
-
+/// Poly+ parties, chat and the lobby all authenticate with a Microsoft
+/// session. RustCraft is offline-only, so no account can ever open one.
 async fn lobby_account() -> Result<MinecraftAccount, (Option<Uuid>, String)> {
-    let state = crate::launcher::state().map_err(|err| (None, err.to_string()))?;
-    let allowed = oneclient_polyplus::social_allowed();
-    let account = match state.auth.default_account_for_launch().await {
-        Ok(account) => account,
-        Err(err) => {
-            let stored = state.auth.default_account().await.ok().flatten();
-            return Err((renewing_owner(stored, allowed), err.to_string()));
-        }
-    }
-    .filter(MinecraftAccount::is_microsoft)
-    .filter(|_| allowed)
-    .ok_or_else(|| (None, t("oneclient.wardrobe.account.signed_out").to_string()))?;
-    if account.needs_sign_in() || account.access_token.is_empty() {
-        return Err((None, t("oneclient.wardrobe.account.needs_sign_in").into()));
-    }
-    Ok(account)
+    Err((None, t("oneclient.wardrobe.account.signed_out").to_string()))
 }
 
 async fn party_account() -> Result<MinecraftAccount, String> {
@@ -412,9 +391,8 @@ pub fn act<T, F, Fut>(
 }
 
 pub fn use_my_uuid() -> Option<Uuid> {
-    try_default_account(&use_current_account())
-        .filter(MinecraftAccount::is_microsoft)
-        .map(|account| account.id)
+    // An offline profile has no Poly+ identity.
+    None
 }
 
 pub fn use_player_name(player: Uuid) -> String {
@@ -515,26 +493,6 @@ mod tests {
 
         assert_eq!(state.party, Some(joined));
         assert_eq!(state.error.as_deref(), Some("offline"));
-    }
-
-    #[test]
-    fn a_failed_renewal_only_keeps_a_social_account() {
-        let account = |kind| MinecraftAccount {
-            id: id(1),
-            username: "player".to_string(),
-            access_token: "token".to_string(),
-            refresh_token: String::new(),
-            expires: Utc::now(),
-            kind,
-            signed_out: false,
-        };
-        let microsoft = oneclient_auth::AccountKind::Microsoft;
-        let offline = oneclient_auth::AccountKind::Offline;
-
-        assert_eq!(renewing_owner(Some(account(microsoft)), true), Some(id(1)));
-        assert_eq!(renewing_owner(Some(account(microsoft)), false), None);
-        assert_eq!(renewing_owner(Some(account(offline)), true), None);
-        assert_eq!(renewing_owner(None, true), None);
     }
 
     #[test]
@@ -645,7 +603,10 @@ mod tests {
         let mut state = LobbyState::default();
         let p = party(1, vec![member(1, 0, true)]);
         state.outgoing = vec![invite(7, p.id, 2), invite(8, id(999), 3)];
-        assert_eq!(state.apply(PartyPacket::PartyUpdated { party: p.clone() }), None);
+        assert_eq!(
+            state.apply(PartyPacket::PartyUpdated { party: p.clone() }),
+            None
+        );
         assert_eq!(state.party_outgoing().len(), 1);
         assert!(state.is_invited(id(2)));
         assert!(!state.is_invited(id(3)));

@@ -1,3 +1,7 @@
+// The wardrobe needs a Microsoft session, which RustCraft does not have. The
+// module stays compiled for future re-enablement but nothing calls into it.
+#![allow(dead_code)]
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -164,20 +168,10 @@ fn mojang_read_message(err: oneclient_mc::McError) -> String {
     }
 }
 
-async fn fresh_account(id: Uuid) -> Result<MinecraftAccount, String> {
-    let state = crate::launcher::state().map_err(|err| err.to_string())?;
-    let account = state
-        .auth
-        .account_for_launch(id)
-        .await
-        .map_err(|err| err.to_string())?;
-    if !account.is_microsoft() {
-        return Err(t("oneclient.wardrobe.account.signed_out").into());
-    }
-    if account.needs_sign_in() || account.access_token.is_empty() {
-        return Err(t("oneclient.wardrobe.account.needs_sign_in").into());
-    }
-    Ok(account)
+async fn fresh_account(_id: Uuid) -> Result<MinecraftAccount, String> {
+    // Mojang skin/cape APIs require a Microsoft-authenticated profile, which
+    // RustCraft never has. Keep the wardrobe compiled but unreachable.
+    Err(t("oneclient.wardrobe.account.signed_out").into())
 }
 
 fn forget_profile(account: Uuid) {
@@ -193,7 +187,7 @@ async fn mojang_profile(account: &MinecraftAccount) -> Result<MojangFullPlayerPr
     let state = crate::launcher::state().map_err(|err| err.to_string())?;
     let profile = oneclient_mc::fetch_logged_in_profile_once(
         &state.services.requester,
-        &account.access_token,
+        oneclient_auth::OFFLINE_ACCESS_TOKEN,
     )
     .await
     .map_err(mojang_read_message)?;
@@ -1146,8 +1140,13 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
         }
         WardrobeAction::MojangCape { cape, name, .. } => {
             let profile = match cape {
-                Some(id) => oneclient_mc::select_cape(requester, &account.access_token, id).await,
-                None => oneclient_mc::hide_cape(requester, &account.access_token).await,
+                Some(id) => {
+                    oneclient_mc::select_cape(requester, oneclient_auth::OFFLINE_ACCESS_TOKEN, id)
+                        .await
+                }
+                None => {
+                    oneclient_mc::hide_cape(requester, oneclient_auth::OFFLINE_ACCESS_TOKEN).await
+                }
             }
             .map_err(mojang_write_failed(account.id))?;
             remember_profile(account, profile.clone()).await;
@@ -1168,10 +1167,14 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
             } else {
                 SkinVariant::Classic
             };
-            let profile =
-                oneclient_mc::set_skin_from_url(requester, &account.access_token, url, variant)
-                    .await
-                    .map_err(mojang_write_failed(account.id))?;
+            let profile = oneclient_mc::set_skin_from_url(
+                requester,
+                oneclient_auth::OFFLINE_ACCESS_TOKEN,
+                url,
+                variant,
+            )
+            .await
+            .map_err(mojang_write_failed(account.id))?;
             remember_profile(account, profile.clone()).await;
             Ok(match record_current_skin(account, &profile, true).await {
                 Ok(Some(skin)) => synced(
@@ -1196,9 +1199,14 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
             } else {
                 SkinVariant::Classic
             };
-            let profile = oneclient_mc::upload_skin(requester, &account.access_token, png, variant)
-                .await
-                .map_err(mojang_write_failed(account.id))?;
+            let profile = oneclient_mc::upload_skin(
+                requester,
+                oneclient_auth::OFFLINE_ACCESS_TOKEN,
+                png,
+                variant,
+            )
+            .await
+            .map_err(mojang_write_failed(account.id))?;
             let name = name.clone().or_else(|| {
                 path.file_stem()
                     .map(|stem| stem.to_string_lossy().chars().take(64).collect::<String>())
@@ -1214,10 +1222,14 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
             } else {
                 SkinVariant::Classic
             };
-            let profile =
-                oneclient_mc::set_skin_from_url(requester, &account.access_token, url, variant)
-                    .await
-                    .map_err(mojang_write_failed(account.id))?;
+            let profile = oneclient_mc::set_skin_from_url(
+                requester,
+                oneclient_auth::OFFLINE_ACCESS_TOKEN,
+                url,
+                variant,
+            )
+            .await
+            .map_err(mojang_write_failed(account.id))?;
             save_worn_skin(account, profile, name.as_deref()).await
         }
         WardrobeAction::AddSkinUsername { username, .. } => {
@@ -1282,10 +1294,14 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
                 } else {
                     SkinVariant::Classic
                 };
-                let profile =
-                    oneclient_mc::set_skin_from_url(requester, &account.access_token, url, variant)
-                        .await
-                        .map_err(mojang_write_failed(account.id))?;
+                let profile = oneclient_mc::set_skin_from_url(
+                    requester,
+                    oneclient_auth::OFFLINE_ACCESS_TOKEN,
+                    url,
+                    variant,
+                )
+                .await
+                .map_err(mojang_write_failed(account.id))?;
                 remember_profile(account, profile).await;
             }
             api::update_skin(account, *id, &serde_json::json!({ "model": model }))
@@ -1436,7 +1452,7 @@ async fn apply_outfit(account: &MinecraftAccount, id: i32, name: &str) -> Result
             };
             match oneclient_mc::set_skin_from_url(
                 requester,
-                &account.access_token,
+                oneclient_auth::OFFLINE_ACCESS_TOKEN,
                 &skin.url,
                 variant,
             )
@@ -1455,8 +1471,11 @@ async fn apply_outfit(account: &MinecraftAccount, id: i32, name: &str) -> Result
     let current_cape = active_cape(&profile).map(|cape| cape.id.clone());
     if wanted_cape != current_cape {
         let result = match &wanted_cape {
-            Some(cape) => oneclient_mc::select_cape(requester, &account.access_token, cape).await,
-            None => oneclient_mc::hide_cape(requester, &account.access_token).await,
+            Some(cape) => {
+                oneclient_mc::select_cape(requester, oneclient_auth::OFFLINE_ACCESS_TOKEN, cape)
+                    .await
+            }
+            None => oneclient_mc::hide_cape(requester, oneclient_auth::OFFLINE_ACCESS_TOKEN).await,
         };
         match result {
             Ok(updated) => profile = updated,

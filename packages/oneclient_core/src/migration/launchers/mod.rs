@@ -1,7 +1,7 @@
 //! Imports instances from third-party launchers (Prism and its MultiMC
 //! relatives, the Modrinth App)
 //!
-//! Unlike the onboarding migration these never map onto OneClient's curated
+//! Unlike the onboarding migration these never map onto RustCraft's curated
 //! clusters: every imported instance becomes its own isolated cluster with its
 //! content registered in the package store
 
@@ -59,7 +59,7 @@ impl ExternalLauncher {
 }
 
 /// Only the overrides the source instance actually set; anything left `None`
-/// falls back to OneClient's global settings
+/// falls back to RustCraft's global settings
 #[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExternalSettings {
     pub mem_max: Option<u32>,

@@ -78,8 +78,7 @@ impl LauncherState {
         let net_config = crate::settings::net_config(&settings);
         oneclient_polyplus::set_base_url(&net_config.plus_api_url);
         services.requester.set_config(net_config);
-        let auth =
-            Arc::new(AuthService::load(services.requester.clone(), services.events.clone()).await?);
+        let auth = Arc::new(AuthService::load().await?);
         let java = JavaService::new(
             std::sync::Arc::new(crate::java_store::SqlJavaStore::new(services.db.clone())),
             services.requester.clone(),
